@@ -12,6 +12,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erlangga.viewmodels.TaskViewModel
@@ -37,9 +43,14 @@ fun AddTaskScreen(
     var title by remember { mutableStateOf("") }
     var tag by remember { mutableStateOf("Work") }
     var time by remember { mutableStateOf("14:00") }
+    var dueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now()) }
     var priority by remember { mutableStateOf("med") }
     var notes by remember { mutableStateOf("") }
     var showTimePicker by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    val displayDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 
     val tags = listOf("Work", "Study", "Errands", "Health", "Personal")
     val priorities = listOf(
@@ -301,6 +312,98 @@ fun AddTaskScreen(
                 }
             }
 
+            // Due Date selection
+            Column(
+                modifier = Modifier.padding(bottom = 18.dp)
+            ) {
+                Text(
+                    text = "DUE DATE",
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val today = LocalDate.now()
+                    val quickDates = listOf(
+                        "Today" to today,
+                        "Tomorrow" to today.plusDays(1),
+                        "Next Week" to today.plusWeeks(1)
+                    )
+
+                    quickDates.forEach { (label, date) ->
+                        FilterChip(
+                            selected = dueDate == date,
+                            onClick = { dueDate = date },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            enabled = true,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.onBackground,
+                                selectedLabelColor = MaterialTheme.colorScheme.background,
+                                containerColor = Color.Transparent,
+                                labelColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = if (dueDate == date) null else FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = dueDate == date,
+                                borderColor = MaterialTheme.colorScheme.outline
+                            ),
+                            shape = RoundedCornerShape(99.dp)
+                        )
+                    }
+
+                    FilterChip(
+                        selected = dueDate != null && dueDate != today && dueDate != today.plusDays(1) && dueDate != today.plusWeeks(1),
+                        onClick = { showDatePicker = true },
+                        label = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = if (dueDate != null && dueDate != today && dueDate != today.plusDays(1) && dueDate != today.plusWeeks(1)) {
+                                        dueDate!!.format(displayDateFormatter)
+                                    } else {
+                                        "Pick"
+                                    },
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        },
+                        enabled = true,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.onBackground,
+                            selectedLabelColor = MaterialTheme.colorScheme.background,
+                            containerColor = Color.Transparent,
+                            labelColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = false,
+                            borderColor = MaterialTheme.colorScheme.outline
+                        ),
+                        shape = RoundedCornerShape(99.dp)
+                    )
+                }
+            }
+
             // Notes field
             Column(
                 modifier = Modifier
@@ -360,6 +463,7 @@ fun AddTaskScreen(
                             tag = tag,
                             time = time,
                             priority = priority,
+                            dueDate = dueDate?.format(dateFormatter),
                             notes = notes.ifBlank { null }
                         )
                         onTaskAdded()
@@ -409,6 +513,50 @@ fun AddTaskScreen(
                         containerColor = MaterialTheme.colorScheme.surface,
                         timeSelectorSelectedContainerColor = MaterialTheme.colorScheme.primary,
                         timeSelectorUnselectedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            }
+        }
+
+        // Date Picker Dialog
+        if (showDatePicker) {
+            val datePickerState = rememberDatePickerState(
+                initialSelectedDateMillis = (dueDate ?: LocalDate.now())
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            datePickerState.selectedDateMillis?.let { millis ->
+                                dueDate = java.time.Instant.ofEpochMilli(millis)
+                                    .atZone(java.time.ZoneId.systemDefault())
+                                    .toLocalDate()
+                            }
+                            showDatePicker = false
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDatePicker = false }) {
+                        Text("Cancel")
+                    }
+                },
+                colors = DatePickerDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                DatePicker(
+                    state = datePickerState,
+                    colors = DatePickerDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                        todayDateBorderColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }

@@ -55,11 +55,12 @@ class TaskViewModel : ViewModel() {
         tag: String,
         time: String,
         priority: String,
+        dueDate: String? = null,
         notes: String? = null
     ) {
         viewModelScope.launch {
             try {
-                val request = CreateTaskRequest(title, tag, time, priority, notes)
+                val request = CreateTaskRequest(title, tag, time, dueDate, priority, notes)
                 val response = RetrofitClient.apiService.createTask(request)
 
                 if (response.success && response.data != null) {

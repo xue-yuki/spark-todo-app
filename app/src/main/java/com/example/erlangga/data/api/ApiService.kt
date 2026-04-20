@@ -52,6 +52,7 @@ data class CreateTaskRequest(
     val title: String,
     val tag: String,
     val time: String,
+    val due_date: String? = null,
     val priority: String,
     val notes: String? = null
 )
