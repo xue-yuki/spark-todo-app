@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erlangga.data.models.Task
-import com.example.erlangga.data.models.mockTasks
 import androidx.compose.ui.zIndex
 import kotlin.math.abs
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,13 +43,40 @@ fun TasksScreen(
     val tasks by taskViewModel.tasks.collectAsState()
     val tasksState by taskViewModel.tasksState.collectAsState()
     var filter by remember { mutableStateOf("today") }
+    var searchQuery by remember { mutableStateOf("") }
     var showAddTaskModal by remember { mutableStateOf(false) }
+    var taskToEdit by remember { mutableStateOf<Task?>(null) }
 
     // Add LazyListState to manage scroll position
     val listState = rememberLazyListState()
 
-    val activeTasks = remember(tasks) { tasks.filter { !it.done } }
-    val completedTasks = remember(tasks) { tasks.filter { it.done } }
+    val today = java.time.LocalDate.now()
+    val filteredTasks = remember(tasks, filter, searchQuery) {
+        when (filter) {
+            "today" -> tasks.filter { task ->
+                val date = task.dueDate?.substringBefore("T")?.let {
+                    runCatching { java.time.LocalDate.parse(it) }.getOrNull()
+                }
+                date == today
+            }
+            "week" -> tasks.filter { task ->
+                val date = task.dueDate?.substringBefore("T")?.let {
+                    runCatching { java.time.LocalDate.parse(it) }.getOrNull()
+                }
+                date != null && !date.isBefore(today) && !date.isAfter(today.plusDays(6))
+            }
+            else -> tasks
+        }.let { list ->
+            if (searchQuery.isBlank()) list
+            else list.filter { task ->
+                task.title.contains(searchQuery, ignoreCase = true) ||
+                task.tag?.contains(searchQuery, ignoreCase = true) == true ||
+                task.notes?.contains(searchQuery, ignoreCase = true) == true
+            }
+        }
+    }
+    val activeTasks = remember(filteredTasks) { filteredTasks.filter { !it.done } }
+    val completedTasks = remember(filteredTasks) { filteredTasks.filter { it.done } }
 
     Box(
         modifier = Modifier
@@ -109,7 +135,7 @@ fun TasksScreen(
                 // Filter chips
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 10.dp)
                 ) {
                     listOf("today", "week", "all").forEach { filterOption ->
                         FilterChip(
@@ -139,6 +165,54 @@ fun TasksScreen(
                         )
                     }
                 }
+
+                // Search bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    placeholder = {
+                        Text(
+                            "Search tasks...",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                )
             }
 
             // Scrollable list
@@ -168,12 +242,9 @@ fun TasksScreen(
                 ) { _, task ->
                     SwipeableTaskRow(
                         task = task,
-                        onToggleDone = { taskId ->
-                            taskViewModel.toggleTask(taskId)
-                        },
-                        onDelete = { taskId ->
-                            taskViewModel.deleteTask(taskId)
-                        },
+                        onToggleDone = { taskId -> taskViewModel.toggleTask(taskId) },
+                        onDelete = { taskId -> taskViewModel.deleteTask(taskId) },
+                        onEdit = { taskToEdit = task },
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
                 }
@@ -197,12 +268,9 @@ fun TasksScreen(
                     ) { _, task ->
                         SwipeableTaskRow(
                             task = task,
-                            onToggleDone = { taskId ->
-                                taskViewModel.toggleTask(taskId)
-                            },
-                            onDelete = { taskId ->
-                                taskViewModel.deleteTask(taskId)
-                            },
+                            onToggleDone = { taskId -> taskViewModel.toggleTask(taskId) },
+                            onDelete = { taskId -> taskViewModel.deleteTask(taskId) },
+                            onEdit = { taskToEdit = task },
                             modifier = Modifier.padding(bottom = 10.dp)
                         )
                     }
@@ -231,10 +299,18 @@ fun TasksScreen(
         // Add Task Modal
         if (showAddTaskModal) {
             AddTaskScreen(
-                onTaskAdded = {
-                    showAddTaskModal = false
-                },
+                onTaskAdded = { showAddTaskModal = false },
                 onNavigateBack = { showAddTaskModal = false },
+                taskViewModel = taskViewModel
+            )
+        }
+
+        // Edit Task Modal
+        taskToEdit?.let { task ->
+            EditTaskScreen(
+                task = task,
+                onTaskUpdated = { taskToEdit = null },
+                onNavigateBack = { taskToEdit = null },
                 taskViewModel = taskViewModel
             )
         }
@@ -246,6 +322,7 @@ fun SwipeableTaskRow(
     task: Task,
     onToggleDone: (Int) -> Unit,
     onDelete: (Int) -> Unit,
+    onEdit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var offsetX by remember(task.id) { mutableFloatStateOf(0f) }
@@ -260,7 +337,7 @@ fun SwipeableTaskRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
+                .height(76.dp)
                 .background(
                     color = when {
                         offsetX > 20 -> MaterialTheme.colorScheme.tertiary // Success green
@@ -316,6 +393,7 @@ fun SwipeableTaskRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .offset(x = offsetX.dp)
+                .clickable { onEdit() }
                 .pointerInput(task.id) {
                     detectHorizontalDragGestures(
                         onDragStart = { isDragging = true },
@@ -350,8 +428,7 @@ fun SwipeableTaskRow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(68.dp)
-                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -400,41 +477,76 @@ fun SwipeableTaskRow(
                     )
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     ) {
+                        // Tag badge
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = task.tag,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        // Dot separator
+                        Box(
+                            modifier = Modifier
+                                .size(3.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                        )
+
+                        // Time
                         Text(
                             text = task.time,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.5.sp,
                             letterSpacing = 0.1.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(3.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                        )
-                        Text(
-                            text = task.tag,
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )
 
+                        // Due date
+                        if (!task.dueDate.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .size(3.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                            )
+                            val formattedDate = try {
+                                val dateStr = task.dueDate!!.substringBefore("T")
+                                val parsed = java.time.LocalDate.parse(dateStr)
+                                parsed.format(java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM", java.util.Locale.ENGLISH))
+                            } catch (e: Exception) { task.dueDate!! }
+                            Text(
+                                text = formattedDate,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Notes preview
                         if (!task.notes.isNullOrBlank()) {
                             Box(
                                 modifier = Modifier
                                     .size(3.dp)
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                             )
-                            Icon(
-                                Icons.Default.Description,
-                                contentDescription = "Has notes",
-                                modifier = Modifier.size(12.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            Text(
+                                text = task.notes!!,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                         }
                     }

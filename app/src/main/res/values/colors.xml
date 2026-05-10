@@ -7,4 +7,14 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Widget colors -->
+    <color name="widget_bg">#F5F0E8</color>
+    <color name="widget_card">#EDE8DC</color>
+    <color name="widget_dark">#1A1A1A</color>
+    <color name="widget_muted">#888070</color>
+    <color name="widget_tag_bg">#E0D9CC</color>
+    <color name="widget_priority_high">#C0392B</color>
+    <color name="widget_priority_med">#C8963E</color>
+    <color name="widget_priority_low">#6A9E6A</color>
 </resources>

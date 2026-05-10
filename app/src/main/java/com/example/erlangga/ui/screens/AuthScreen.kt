@@ -25,8 +25,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.erlangga.R
 
 @Composable
 fun AuthScreen(
@@ -66,8 +68,7 @@ fun AuthScreen(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Check,
+                    Icon(Icons.Default.Check,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.background
@@ -155,7 +156,7 @@ fun AuthScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -166,7 +167,7 @@ fun AuthScreen(
                     letterSpacing = 0.14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -185,12 +186,11 @@ fun AuthScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                // Google logo would go here
                 Icon(
-                    Icons.Default.Check,
+                    painter = painterResource(R.drawable.ic_google),
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
-                    tint = Color(0xFF4285F4)
+                    tint = androidx.compose.ui.graphics.Color.Unspecified
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(

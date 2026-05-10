@@ -1,6 +1,7 @@
 package com.example.erlangga.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +41,7 @@ import kotlin.math.sin
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erlangga.viewmodels.TaskViewModel
 import com.example.erlangga.viewmodels.AnalyticsViewModel
+import com.example.erlangga.viewmodels.PomodoroViewModel
 
 @Composable
 fun HomeScreen(
@@ -47,7 +51,8 @@ fun HomeScreen(
     onNavigateToFocus: () -> Unit,
     onNavigateToAnalytics: () -> Unit,
     taskViewModel: TaskViewModel = viewModel(),
-    analyticsViewModel: AnalyticsViewModel = viewModel()
+    analyticsViewModel: AnalyticsViewModel = viewModel(),
+    pomodoroViewModel: PomodoroViewModel = viewModel()
 ) {
     val tasks by taskViewModel.tasks.collectAsState()
     val analyticsData by analyticsViewModel.analyticsData.collectAsState()
@@ -59,8 +64,18 @@ fun HomeScreen(
         analyticsViewModel.loadAnalytics()
     }
 
-    var pomoRunning by remember { mutableStateOf(false) }
-    val pomoDisplay = "25:00"
+    val pomoRunning by pomodoroViewModel.isRunning.collectAsState()
+    val pomoTimeLeft by pomodoroViewModel.timeLeft.collectAsState()
+    val pomoDisplay = String.format("%02d:%02d", pomoTimeLeft / 60, pomoTimeLeft % 60)
+
+    val hour = java.time.LocalTime.now().hour
+    val greeting = when {
+        hour in 5..10 -> "Morning"
+        hour in 11..14 -> "Good afternoon"
+        hour in 15..17 -> "Afternoon"
+        hour in 18..20 -> "Good evening"
+        else -> "Good night"
+    }
 
     Column(
         modifier = Modifier
@@ -89,7 +104,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
-                    text = "Morning, ${userName.split(" ").firstOrNull() ?: userName}.",
+                    text = "$greeting, ${userName.split(" ").firstOrNull() ?: userName}.",
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = (-0.5).sp,
@@ -105,6 +120,13 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            Image(
+                painter = painterResource(com.example.erlangga.R.drawable.sparky),
+                contentDescription = "Sparky",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(130.dp)
+            )
 
             IconButton(
                 onClick = { /* TODO: Search */ },
@@ -326,7 +348,7 @@ fun HomeScreen(
                     )
 
                     Button(
-                        onClick = { pomoRunning = !pomoRunning },
+                        onClick = { pomodoroViewModel.toggleTimer() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -508,61 +530,67 @@ fun HomeScreen(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(bottom = 10.dp)
+                    Box(
+                        contentAlignment = Alignment.BottomCenter,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "$doneToday",
-                            fontSize = 38.sp,
-                            fontWeight = FontWeight.Medium,
-                            letterSpacing = (-1.5).sp,
-                            lineHeight = 38.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "/ $total",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 2.dp)
-                        )
-                    }
+                        // Arc progress indicator
+                        androidx.compose.foundation.Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(72.dp)
+                        ) {
+                            val progress = if (total > 0) doneToday.toFloat() / total.toFloat() else 0f
+                            val arcWidth = size.width
+                            val arcHeight = size.height
+                            val radius = arcWidth / 2f * 0.85f
+                            val centerX = arcWidth / 2f
+                            val centerY = arcHeight
 
-                    // Arc progress indicator
-                    androidx.compose.foundation.Canvas(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(28.dp)
-                    ) {
-                        val progress = if (total > 0) doneToday.toFloat() / total.toFloat() else 0f
-                        val arcWidth = size.width
-                        val arcHeight = size.height
-                        val radius = arcWidth / 2f * 0.9f
-                        val centerX = arcWidth / 2f
-                        val centerY = arcHeight
-
-                        // Background arc
-                        drawArc(
-                            color = Color(0xFFF0EBDE),
-                            startAngle = 180f,
-                            sweepAngle = 180f,
-                            useCenter = false,
-                            style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round),
-                            topLeft = Offset(centerX - radius, centerY - radius),
-                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
-                        )
-
-                        // Progress arc
-                        if (progress > 0) {
+                            // Background arc
                             drawArc(
-                                color = Color(0xFF1A1A1A),
+                                color = Color(0xFFF0EBDE),
                                 startAngle = 180f,
-                                sweepAngle = 180f * progress,
+                                sweepAngle = 180f,
                                 useCenter = false,
                                 style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round),
                                 topLeft = Offset(centerX - radius, centerY - radius),
                                 size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+                            )
+
+                            // Progress arc
+                            if (progress > 0) {
+                                drawArc(
+                                    color = Color(0xFF1A1A1A),
+                                    startAngle = 180f,
+                                    sweepAngle = 180f * progress,
+                                    useCenter = false,
+                                    style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round),
+                                    topLeft = Offset(centerX - radius, centerY - radius),
+                                    size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+                                )
+                            }
+                        }
+
+                        // Number centered above arc baseline
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            Text(
+                                text = "$doneToday",
+                                fontSize = 38.sp,
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = (-1.5).sp,
+                                lineHeight = 38.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "/ $total",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
                     }

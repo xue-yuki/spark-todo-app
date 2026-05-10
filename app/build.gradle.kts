@@ -82,6 +82,10 @@ dependencies {
     // Icons Extended
     implementation("androidx.compose.material:material-icons-extended:1.7.6")
 
+    // Glance (Home Screen Widget)
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+    implementation("androidx.glance:glance-material3:1.1.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

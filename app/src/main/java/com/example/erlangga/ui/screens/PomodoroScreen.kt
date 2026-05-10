@@ -22,44 +22,64 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.erlangga.viewmodels.PomodoroViewModel
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 @Composable
 fun PomodoroScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    pomodoroViewModel: PomodoroViewModel = viewModel()
 ) {
-    var isRunning by remember { mutableStateOf(false) }
-    var timeLeft by remember { mutableStateOf(1500) }
-    var selectedMode by remember { mutableStateOf(0) }
-    val totalTime = when (selectedMode) {
-        0 -> 1500 // 25 minutes
-        1 -> 300  // 5 minutes
-        2 -> 900  // 15 minutes
-        else -> 1500
-    }
+    val isRunning by pomodoroViewModel.isRunning.collectAsState()
+    val timeLeft by pomodoroViewModel.timeLeft.collectAsState()
+    val selectedMode by pomodoroViewModel.selectedMode.collectAsState()
+    val customMinutes by pomodoroViewModel.customMinutes.collectAsState()
+    val totalTime = pomodoroViewModel.totalTime
     val progress = 1f - (timeLeft.toFloat() / totalTime)
 
-    // Countdown timer effect
-    LaunchedEffect(isRunning, selectedMode) {
-        if (!isRunning) return@LaunchedEffect
+    var showCustomDialog by remember { mutableStateOf(false) }
 
-        while (isRunning && timeLeft > 0) {
-            kotlinx.coroutines.delay(1000L)
-            timeLeft--
-        }
-
-        if (timeLeft == 0) {
-            isRunning = false
-            // Timer completed - could add notification here
-        }
-    }
-
-    // Reset timer when mode changes
-    LaunchedEffect(selectedMode) {
-        timeLeft = totalTime
-        isRunning = false
+    // Custom duration dialog
+    if (showCustomDialog) {
+        var inputText by remember { mutableStateOf(customMinutes.toString()) }
+        AlertDialog(
+            onDismissRequest = { showCustomDialog = false },
+            title = { Text("Custom Duration", fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column {
+                    Text("Enter duration in minutes (1–120):", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { if (it.length <= 3 && it.all { c -> c.isDigit() }) inputText = it },
+                        label = { Text("Minutes") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val mins = inputText.toIntOrNull() ?: customMinutes
+                        pomodoroViewModel.setCustomMinutes(mins)
+                        pomodoroViewModel.setMode(3)
+                        showCustomDialog = false
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomDialog = false }) { Text("Cancel") }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 
     Column(
@@ -89,25 +109,35 @@ fun PomodoroScreen(
                 Text("Immerse", fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
         }
-        Spacer(modifier = Modifier.height(18.dp))
-        Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(99.dp)) {
-            Row(modifier = Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Focus" to "25 min", "Short" to "5 min", "Long" to "15 min").forEachIndexed { index, (label, duration) ->
+        Spacer(modifier = Modifier.height(14.dp))
+        Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
+            Row(modifier = Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val modes = listOf(
+                    Triple(0, "Focus", "25m"),
+                    Triple(1, "Short", "5m"),
+                    Triple(2, "Long", "15m"),
+                    Triple(3, "Custom", "${customMinutes}m")
+                )
+                modes.forEach { (index, label, duration) ->
                     Box(
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(99.dp))
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
                             .background(if (selectedMode == index) MaterialTheme.colorScheme.onBackground else Color.Transparent)
-                            .clickable { selectedMode = index }.padding(vertical = 8.dp),
+                            .clickable {
+                                if (index == 3) showCustomDialog = true
+                                else pomodoroViewModel.setMode(index)
+                            }
+                            .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (selectedMode == index) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(duration, fontSize = 10.sp, color = if (selectedMode == index) MaterialTheme.colorScheme.background.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (selectedMode == index) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(duration, fontSize = 10.sp, color = if (selectedMode == index) MaterialTheme.colorScheme.background.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                         }
                     }
                 }
             }
         }
-        Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
             Canvas(modifier = Modifier.size(300.dp)) {
                 val radius = 130.dp.toPx()
                 val center = Offset(size.width / 2, size.height / 2)
@@ -128,10 +158,7 @@ fun PomodoroScreen(
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
-                onClick = {
-                    isRunning = false
-                    timeLeft = totalTime
-                },
+                onClick = { pomodoroViewModel.reset() },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.outlinedButtonColors(
                     containerColor = Color.Transparent,
@@ -144,7 +171,7 @@ fun PomodoroScreen(
                 Text("Reset", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
             Button(
-                onClick = { isRunning = !isRunning },
+                onClick = { pomodoroViewModel.toggleTimer() },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.onBackground,

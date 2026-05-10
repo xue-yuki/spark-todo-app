@@ -16,6 +16,7 @@ import com.example.erlangga.ui.screens.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erlangga.viewmodels.TaskViewModel
 import com.example.erlangga.viewmodels.AuthViewModel
+import com.example.erlangga.viewmodels.PomodoroViewModel
 
 @Composable
 fun SparkNavGraph(
@@ -34,6 +35,7 @@ fun SparkNavGraph(
     // Shared ViewModels
     val taskViewModel: TaskViewModel = viewModel()
     val authViewModel: AuthViewModel = viewModel()
+    val pomodoroViewModel: PomodoroViewModel = viewModel()
     val authState by authViewModel.authState.collectAsState()
 
     // Check for saved auth on start
@@ -112,7 +114,8 @@ fun SparkNavGraph(
                         restoreState = true
                     }
                 },
-                taskViewModel = taskViewModel
+                taskViewModel = taskViewModel,
+                pomodoroViewModel = pomodoroViewModel
             )
         }
 
@@ -124,7 +127,8 @@ fun SparkNavGraph(
 
         composable(Screen.Pomodoro.route) {
             PomodoroScreen(
-                onNavigateBack = { navController.navigateUp() }
+                onNavigateBack = { navController.navigateUp() },
+                pomodoroViewModel = pomodoroViewModel
             )
         }
 

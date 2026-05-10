@@ -1,17 +1,21 @@
 package com.example.erlangga.viewmodels
 
+import android.app.Application
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.glance.appwidget.updateAll
+import com.example.erlangga.data.WidgetCacheManager
 import com.example.erlangga.data.api.CreateTaskRequest
 import com.example.erlangga.data.api.RetrofitClient
 import com.example.erlangga.data.api.UpdateTaskRequest
 import com.example.erlangga.data.models.Task
+import com.example.erlangga.widget.SparkWidget
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class TaskViewModel : ViewModel() {
+class TaskViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _tasksState = MutableStateFlow<TasksState>(TasksState.Loading)
     val tasksState: StateFlow<TasksState> = _tasksState
 
@@ -38,6 +42,8 @@ class TaskViewModel : ViewModel() {
                 if (response.success && response.data != null) {
                     _tasks.value = response.data
                     _tasksState.value = TasksState.Success
+                    WidgetCacheManager.saveTasks(app, response.data)
+                    SparkWidget().updateAll(app)
                     Log.d("TaskViewModel", "Loaded ${response.data.size} tasks")
                 } else {
                     _tasksState.value = TasksState.Error(response.message ?: "Failed to load tasks")
@@ -85,11 +91,12 @@ class TaskViewModel : ViewModel() {
         time: String,
         done: Boolean,
         priority: String,
+        dueDate: String? = null,
         notes: String? = null
     ) {
         viewModelScope.launch {
             try {
-                val request = UpdateTaskRequest(title, tag, time, done, priority, notes)
+                val request = UpdateTaskRequest(title, tag, time, done, priority, dueDate, notes)
                 val response = RetrofitClient.apiService.updateTask(taskId, request)
 
                 if (response.success && response.data != null) {

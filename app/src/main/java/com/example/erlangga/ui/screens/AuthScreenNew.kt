@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
+import androidx.compose.ui.res.painterResource
+import com.example.erlangga.R
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -264,10 +266,10 @@ fun AuthScreenWithGoogle(
                     )
                 } else {
                     Icon(
-                        Icons.Default.Check,
+                        painter = painterResource(R.drawable.ic_google),
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = Color(0xFF4285F4)
+                        tint = Color.Unspecified
                     )
                 }
                 Spacer(modifier = Modifier.width(10.dp))

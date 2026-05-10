@@ -63,6 +63,7 @@ data class UpdateTaskRequest(
     val time: String,
     val done: Boolean,
     val priority: String,
+    val due_date: String? = null,
     val notes: String? = null
 )
 
@@ -74,7 +75,8 @@ data class AnalyticsData(
     val streak_days: Int,
     val focus_time_hours: Double,
     val tasks_per_day: List<Int>,
-    val heatmap_data: List<Int>
+    val heatmap_data: List<Int>,
+    val tasks_by_tag: Map<String, Int> = emptyMap()
 )
 
 /**

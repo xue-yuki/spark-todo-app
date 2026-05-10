@@ -1,9 +1,15 @@
 package com.example.erlangga
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -11,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.erlangga.data.ReminderManager
+import com.example.erlangga.data.ThemeManager
 import com.example.erlangga.data.TokenManager
 import com.example.erlangga.navigation.*
 import com.example.erlangga.ui.theme.SparkTodoAppTheme
@@ -19,12 +27,35 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize TokenManager
+        // Initialize TokenManager, ThemeManager, ReminderManager
         TokenManager.init(this)
+        ThemeManager.init(this)
+        ReminderManager.init(this)
+
+        // Request notification permission on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                    ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        100
+                    )
+                }
+            } catch (_: Exception) {}
+        }
 
         enableEdgeToEdge()
         setContent {
-            SparkTodoAppTheme {
+            val themeMode by ThemeManager.themeMode.collectAsState()
+            val systemDark = isSystemInDarkTheme()
+            val isDark = when (themeMode) {
+                "dark" -> true
+                "light" -> false
+                else -> systemDark
+            }
+            SparkTodoAppTheme(darkTheme = isDark) {
                 MainScreen()
             }
         }

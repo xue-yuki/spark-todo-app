@@ -14,7 +14,7 @@ object RetrofitClient {
     // Development (Emulator): http://10.0.2.2:8000/api/
     // Development (Real Device): http://10.212.68.24:8000/api/
     // Production: https://your-domain.com/api/
-    private const val BASE_URL = "http://10.212.68.24:8000/api/"
+    private const val BASE_URL = "https://sparktodo-api-laravel-production.up.railway.app/api/"
 
     fun setAuthToken(token: String?) {
         if (token != null) {

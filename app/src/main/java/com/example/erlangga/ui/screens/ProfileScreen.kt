@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.example.erlangga.data.ReminderManager
+import com.example.erlangga.data.ThemeManager
 import com.example.erlangga.viewmodels.AnalyticsViewModel
 import com.example.erlangga.viewmodels.AuthViewModel
 import com.example.erlangga.viewmodels.ProfileViewModel
@@ -48,7 +50,10 @@ fun ProfileScreen(
     val profileState by profileViewModel.profileState.collectAsState()
     val currentUser by profileViewModel.currentUser.collectAsState()
 
-    var selectedTheme by remember { mutableStateOf("light") }
+    val selectedTheme by ThemeManager.themeMode.collectAsState()
+    val reminderEnabled by ReminderManager.enabled.collectAsState()
+    val reminderHour by ReminderManager.hour.collectAsState()
+    val reminderMinute by ReminderManager.minute.collectAsState()
     var selectedDensity by remember { mutableStateOf("comfy") }
     var showEditDialog by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf(userName) }
@@ -132,7 +137,7 @@ fun ProfileScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         val photoUrl = selectedImageUri?.toString()
-                            ?: currentUser?.profile_photo?.let { "http://192.168.18.237:8000/storage/$it" }
+                            ?: currentUser?.profile_photo?.let { "https://sparktodo-api-laravel-production.up.railway.app/storage/$it" }
 
                         if (photoUrl != null) {
                             AsyncImage(
@@ -266,9 +271,9 @@ fun ProfileScreen(
                 SettingsRowWithToggle(
                     icon = Icons.Default.Brightness6,
                     label = "Theme",
-                    options = listOf("Light", "Dark"),
+                    options = listOf("Light", "Dark", "System"),
                     selected = selectedTheme.replaceFirstChar { it.uppercase() },
-                    onSelect = { selectedTheme = it.lowercase() }
+                    onSelect = { ThemeManager.setTheme(context, it.lowercase()) }
                 )
 
                 // Divider
@@ -312,24 +317,12 @@ fun ProfileScreen(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column {
-                SettingsRowWithValue(
-                    icon = Icons.Default.Fingerprint,
-                    label = "Biometric unlock",
-                    value = "On"
-                )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .padding(horizontal = 16.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
-                )
-
-                SettingsRowWithValue(
-                    icon = Icons.Default.Notifications,
-                    label = "Daily reminders",
-                    value = "8:30 AM"
+                ReminderSettingsRow(
+                    enabled = reminderEnabled,
+                    hour = reminderHour,
+                    minute = reminderMinute,
+                    onSetReminder = { h, m -> ReminderManager.setReminder(context, h, m) },
+                    onCancel = { ReminderManager.cancelReminder(context) }
                 )
 
                 Box(
@@ -343,7 +336,7 @@ fun ProfileScreen(
                 SettingsRowWithValue(
                     icon = Icons.Default.Cloud,
                     label = "Sync & backup",
-                    value = "Supabase"
+                    value = "Railway"
                 )
             }
         }
@@ -547,6 +540,103 @@ fun SettingsRowWithToggle(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReminderSettingsRow(
+    enabled: Boolean,
+    hour: Int,
+    minute: Int,
+    onSetReminder: (Int, Int) -> Unit,
+    onCancel: () -> Unit
+) {
+    var showTimePicker by remember { mutableStateOf(false) }
+
+    val timeLabel = if (enabled) {
+        val amPm = if (hour < 12) "AM" else "PM"
+        val displayHour = when {
+            hour == 0 -> 12
+            hour > 12 -> hour - 12
+            else -> hour
+        }
+        "$displayHour:${minute.toString().padStart(2, '0')} $amPm"
+    } else {
+        "Off"
+    }
+
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = hour,
+            initialMinute = minute,
+            is24Hour = false
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = {
+                Text("Set reminder time", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSetReminder(timePickerState.hour, timePickerState.minute)
+                    showTimePicker = false
+                }) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showTimePicker = true }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Notifications,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Text(
+            text = "Daily reminders",
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+
+        Text(
+            text = timeLabel,
+            fontSize = 12.sp,
+            color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Switch(
+            checked = enabled,
+            onCheckedChange = { isOn ->
+                if (isOn) showTimePicker = true
+                else onCancel()
+            },
+            modifier = Modifier.height(24.dp),
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.background,
+                checkedTrackColor = MaterialTheme.colorScheme.onBackground,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        )
     }
 }
 
