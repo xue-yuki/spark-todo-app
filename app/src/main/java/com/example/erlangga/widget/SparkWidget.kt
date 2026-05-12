@@ -18,143 +18,182 @@ import com.example.erlangga.MainActivity
 import com.example.erlangga.R
 import com.example.erlangga.data.CachedTask
 import com.example.erlangga.data.WidgetCacheManager
+import kotlin.math.roundToInt
 
 class SparkWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val tasks = WidgetCacheManager.getTasks(context)
+        val tasks       = WidgetCacheManager.getTasks(context)
         val totalActive = WidgetCacheManager.getTaskCount(context)
+        val totalDone   = WidgetCacheManager.getCompletedCount(context)
         provideContent {
-            WidgetContent(tasks = tasks, totalActive = totalActive)
+            WidgetContent(tasks = tasks, totalActive = totalActive, totalDone = totalDone)
         }
     }
 }
 
 @Composable
-fun WidgetContent(tasks: List<CachedTask>, totalActive: Int) {
-    val bg     = ColorProvider(R.color.widget_bg)
-    val cardBg = ColorProvider(R.color.widget_card)
-    val dark   = ColorProvider(R.color.widget_dark)
-    val muted  = ColorProvider(R.color.widget_muted)
-    val tagBg  = ColorProvider(R.color.widget_tag_bg)
+fun WidgetContent(tasks: List<CachedTask>, totalActive: Int, totalDone: Int) {
+    val bg       = ColorProvider(R.color.widget_bg)
+    val dark     = ColorProvider(R.color.widget_dark)
+    val muted    = ColorProvider(R.color.widget_muted)
+    val cardSoft = ColorProvider(R.color.widget_card)
+    // widget_tag_bg (#E0D9CC) is visibly darker than bg (#F5F0E8) — use for empty segments
+    val divider  = ColorProvider(R.color.widget_tag_bg)
+
+    val total      = totalActive + totalDone
+    val shownTasks = tasks.take(3)
+    val moreCount  = totalActive - shownTasks.size
+
+    // Progress: normalize to 7 segments, always render even when done=0
+    val progressSegs = if (total > 0)
+        ((totalDone.toFloat() / total) * 7).roundToInt().coerceIn(0, 7)
+    else 0
+
+    val subtitle = when {
+        total == 0      -> "nothing pending"
+        totalDone == 0  -> "today · $totalActive left"
+        else            -> "today · $totalDone of $total done"
+    }
 
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(bg)
-            .cornerRadius(28.dp)
+            .cornerRadius(24.dp)
             .clickable(actionStartActivity<MainActivity>())
     ) {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .padding(20.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
         ) {
-            // Header
+            // ── Header ──────────────────────────────────────────────
             Row(
                 modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = GlanceModifier.defaultWeight()) {
-                    Text(
-                        text = "⚡ Spark",
-                        style = TextStyle(
-                            color = dark,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                    Spacer(modifier = GlanceModifier.height(2.dp))
-                    Text(
-                        text = if (totalActive == 0) "You're all caught up!" else "$totalActive task${if (totalActive > 1) "s" else ""} remaining",
-                        style = TextStyle(color = muted, fontSize = 12.sp)
-                    )
-                }
-
-                Spacer(modifier = GlanceModifier.width(12.dp))
-
-                // Badge
                 Box(
                     modifier = GlanceModifier
+                        .size(20.dp)
                         .background(dark)
-                        .cornerRadius(99.dp)
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .cornerRadius(6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (totalActive > 0) "$totalActive" else "✓",
+                        text = "✦",
                         style = TextStyle(
                             color = ColorProvider(R.color.widget_bg),
-                            fontSize = 14.sp,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+
+                Spacer(modifier = GlanceModifier.width(8.dp))
+
+                Column(modifier = GlanceModifier.defaultWeight()) {
+                    Text(
+                        text = "SPARK",
+                        style = TextStyle(
+                            color = dark,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Spacer(modifier = GlanceModifier.height(1.dp))
+                    Text(
+                        text = subtitle,
+                        style = TextStyle(
+                            color = muted,
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    )
+                }
+
+                Box(
+                    modifier = GlanceModifier
+                        .background(cardSoft)
+                        .cornerRadius(99.dp)
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .clickable(actionStartActivity<MainActivity>()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "+ Add",
+                        style = TextStyle(
+                            color = dark,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
                 }
             }
 
-            Spacer(modifier = GlanceModifier.height(16.dp))
+            Spacer(modifier = GlanceModifier.height(10.dp))
 
-            // Divider
-            Box(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(tagBg)
-            ) {}
+            // ── Progress bar — always visible, empty segs use divider color ──
+            Row(modifier = GlanceModifier.fillMaxWidth().height(3.dp)) {
+                for (i in 0 until 7) {
+                    if (i > 0) Spacer(modifier = GlanceModifier.width(2.dp))
+                    Box(
+                        modifier = GlanceModifier
+                            .defaultWeight()
+                            .height(3.dp)
+                            .background(if (i < progressSegs) dark else divider)
+                            .cornerRadius(2.dp)
+                    ) {}
+                }
+            }
 
-            Spacer(modifier = GlanceModifier.height(14.dp))
+            Spacer(modifier = GlanceModifier.height(10.dp))
+
+            // ── Divider ──────────────────────────────────────────────
+            Box(modifier = GlanceModifier.fillMaxWidth().height(1.dp).background(divider)) {}
+            Spacer(modifier = GlanceModifier.height(8.dp))
 
             if (tasks.isEmpty()) {
-                Box(
-                    modifier = GlanceModifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Nothing pending 🎉",
-                            style = TextStyle(
-                                color = dark,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        )
-                        Spacer(modifier = GlanceModifier.height(6.dp))
-                        Text(
-                            text = "Tap to add a new task",
-                            style = TextStyle(color = muted, fontSize = 12.sp)
-                        )
-                    }
-                }
+                // ── Empty state ──────────────────────────────────────
+                Text(
+                    text = "All done for today.",
+                    style = TextStyle(color = muted, fontSize = 12.sp)
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
             } else {
-                // Task list — fills available space
-                Column(
-                    modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    tasks.forEachIndexed { index, task ->
-                        WidgetTaskRow(task = task, cardBg = cardBg, dark = dark, muted = muted, tagBg = tagBg)
-                        if (index < tasks.lastIndex) {
-                            Spacer(modifier = GlanceModifier.height(8.dp))
-                        }
+                // ── Task rows — natural height, no stretch ────────────
+                shownTasks.forEachIndexed { index, task ->
+                    WidgetTaskRow(task = task, dark = dark, muted = muted, cardSoft = cardSoft)
+                    if (index < shownTasks.lastIndex) {
+                        Box(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(divider)
+                        ) {}
                     }
                 }
 
-                Spacer(modifier = GlanceModifier.height(16.dp))
+                // Push footer to bottom
+                Spacer(modifier = GlanceModifier.defaultWeight())
 
-                // Open app button — full width
-                Box(
-                    modifier = GlanceModifier
-                        .fillMaxWidth()
-                        .background(dark)
-                        .cornerRadius(14.dp)
-                        .padding(vertical = 12.dp)
-                        .clickable(actionStartActivity<MainActivity>()),
-                    contentAlignment = Alignment.Center
+                // ── Footer ───────────────────────────────────────────
+                Box(modifier = GlanceModifier.fillMaxWidth().height(1.dp).background(divider)) {}
+                Spacer(modifier = GlanceModifier.height(7.dp))
+
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Open Spark →",
+                        text = if (moreCount > 0) "+$moreCount more today" else "All shown",
+                        style = TextStyle(color = muted, fontSize = 10.5.sp)
+                    )
+                    Spacer(modifier = GlanceModifier.defaultWeight())
+                    Text(
+                        text = "See all ›",
                         style = TextStyle(
-                            color = ColorProvider(R.color.widget_bg),
-                            fontSize = 13.sp,
+                            color = dark,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
@@ -167,12 +206,11 @@ fun WidgetContent(tasks: List<CachedTask>, totalActive: Int) {
 @Composable
 fun WidgetTaskRow(
     task: CachedTask,
-    cardBg: ColorProvider,
     dark: ColorProvider,
     muted: ColorProvider,
-    tagBg: ColorProvider
+    cardSoft: ColorProvider
 ) {
-    val priorityColor = when (task.priority) {
+    val priorityColor = when (task.priority.uppercase()) {
         "HIGH"   -> ColorProvider(R.color.widget_priority_high)
         "MEDIUM" -> ColorProvider(R.color.widget_priority_med)
         else     -> ColorProvider(R.color.widget_priority_low)
@@ -181,51 +219,58 @@ fun WidgetTaskRow(
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .background(cardBg)
-            .cornerRadius(14.dp)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Priority dot
         Box(
             modifier = GlanceModifier
-                .size(9.dp)
+                .size(6.dp)
                 .background(priorityColor)
-                .cornerRadius(5.dp)
+                .cornerRadius(3.dp)
         ) {}
 
-        Spacer(modifier = GlanceModifier.width(12.dp))
+        Spacer(modifier = GlanceModifier.width(10.dp))
 
-        // Title
         Text(
             text = task.title,
             style = TextStyle(
                 color = dark,
-                fontSize = 13.sp,
+                fontSize = 12.5.sp,
                 fontWeight = FontWeight.Medium
             ),
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight()
         )
 
-        Spacer(modifier = GlanceModifier.width(10.dp))
+        Spacer(modifier = GlanceModifier.width(8.dp))
 
-        // Tag pill
         Box(
             modifier = GlanceModifier
-                .background(tagBg)
-                .cornerRadius(8.dp)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .background(cardSoft)
+                .cornerRadius(4.dp)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                text = task.tag,
+                text = task.tag.uppercase(),
                 style = TextStyle(
                     color = muted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
                 )
             )
         }
+
+        Spacer(modifier = GlanceModifier.width(8.dp))
+
+        Text(
+            text = task.time,
+            style = TextStyle(
+                color = muted,
+                fontSize = 10.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        )
     }
 }
 

@@ -1,7 +1,10 @@
 package com.example.erlangga.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,26 +25,21 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.erlangga.data.models.mockTasks
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erlangga.viewmodels.TaskViewModel
 import com.example.erlangga.viewmodels.AnalyticsViewModel
 import com.example.erlangga.viewmodels.PomodoroViewModel
+import com.example.erlangga.viewmodels.WeatherViewModel
 
 @Composable
 fun HomeScreen(
@@ -52,16 +50,58 @@ fun HomeScreen(
     onNavigateToAnalytics: () -> Unit,
     taskViewModel: TaskViewModel = viewModel(),
     analyticsViewModel: AnalyticsViewModel = viewModel(),
-    pomodoroViewModel: PomodoroViewModel = viewModel()
+    pomodoroViewModel: PomodoroViewModel = viewModel(),
+    weatherViewModel: WeatherViewModel = viewModel()
 ) {
     val tasks by taskViewModel.tasks.collectAsState()
     val analyticsData by analyticsViewModel.analyticsData.collectAsState()
-    val topTasks = tasks.filter { !it.done }.take(3)
-    val doneToday = tasks.count { it.done }
-    val total = tasks.size
+    val today = LocalDate.now()
+    val topTasks = tasks.filter { !it.done }.filter { task ->
+        task.dueDate == null ||
+        runCatching { LocalDate.parse(task.dueDate.substringBefore("T")) }
+            .getOrNull()?.let { !it.isBefore(today) } == true
+    }.take(3)
+    val doneToday = tasks.count { task ->
+        task.done && (task.dueDate == null ||
+        runCatching { LocalDate.parse(task.dueDate.substringBefore("T")) }
+            .getOrNull()?.isEqual(today) == true)
+    }
+    val total = tasks.count { task ->
+        task.dueDate == null ||
+        runCatching { LocalDate.parse(task.dueDate.substringBefore("T")) }
+            .getOrNull()?.isEqual(today) == true
+    }
+
+    val weatherState by weatherViewModel.weatherState.collectAsState()
+    val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    fun fetchWeatherWithFallback() {
+        fusedLocationClient.lastLocation
+            .addOnSuccessListener { loc ->
+                val lat = loc?.latitude ?: -7.4232
+                val lon = loc?.longitude ?: 109.2444
+                weatherViewModel.fetchWeather(lat, lon)
+            }
+            .addOnFailureListener {
+                weatherViewModel.fetchWeather(-7.4232, 109.2444)
+            }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) fetchWeatherWithFallback()
+        else weatherViewModel.fetchWeather(-7.4232, 109.2444)
+    }
 
     LaunchedEffect(Unit) {
         analyticsViewModel.loadAnalytics()
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) fetchWeatherWithFallback()
+        else locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
     }
 
     val pomoRunning by pomodoroViewModel.isRunning.collectAsState()
@@ -112,21 +152,14 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "${topTasks.size} things await.",
+                    text = if (topTasks.size == 1) "1 thing awaits." else "${topTasks.size} things await.",
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = (-0.5).sp,
                     lineHeight = 31.2.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-
-            Image(
-                painter = painterResource(com.example.erlangga.R.drawable.sparky),
-                contentDescription = "Sparky",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(130.dp)
-            )
+            }   
 
             IconButton(
                 onClick = { /* TODO: Search */ },
@@ -374,56 +407,131 @@ fun HomeScreen(
                 // Weather card
                 BentoCardAlt(
                     modifier = Modifier.weight(1f),
-                    onClick = { /* TODO */ }
+                    onClick = { }
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(bottom = 14.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Cloud,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "PURWOKERTO",
-                            fontSize = 11.sp,
-                            letterSpacing = 0.14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    when (val ws = weatherState) {
+                        is WeatherViewModel.WeatherState.Success -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(bottom = 14.dp)
+                            ) {
+                                Text(
+                                    text = ws.emoji,
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    text = ws.cityName.uppercase().take(12),
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
-                    Text(
-                        text = "28°",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = (-1).sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 2.dp)
-                    )
-
-                    Text(
-                        text = "Partly cloudy · H 32° L 24°",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        listOf("10a 26°", "12p 30°", "2p 32°").forEach { forecast ->
                             Text(
-                                text = forecast,
+                                text = "${ws.temperature}°",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                letterSpacing = 0.1.sp,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Light,
+                                letterSpacing = (-1).sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+
+                            Text(
+                                text = ws.description,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Feels ${ws.feelsLike}°",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.1.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "💧${ws.humidity}%",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.1.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        is WeatherViewModel.WeatherState.Loading -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(bottom = 14.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Cloud,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "WEATHER",
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        else -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(bottom = 14.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Cloud,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "WEATHER",
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                text = "--°",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Light,
+                                letterSpacing = (-1).sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                            Text(
+                                text = "Waiting for location...",
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -496,8 +604,8 @@ fun HomeScreen(
                                     .height(20.dp)
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(
-                                        if (active == 1) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.surfaceVariant
+                                        if (active == 1) MaterialTheme.colorScheme.onBackground
+                                        else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f)
                                     )
                             )
                         }

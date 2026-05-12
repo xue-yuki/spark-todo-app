@@ -11,16 +11,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
+import org.json.JSONObject
+import retrofit2.HttpException
 
 class AuthViewModel : ViewModel() {
-    private val firebaseAuth = FirebaseAuth.getInstance()
-
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState
 
@@ -49,49 +46,29 @@ class AuthViewModel : ViewModel() {
             try {
                 _authState.value = AuthState.Loading
 
-                // 1. Get Firebase credential
-                val credential = GoogleAuthProvider.getCredential(account.idToken, null)
-
-                // 2. Sign in to Firebase
-                val authResult = firebaseAuth.signInWithCredential(credential).await()
-                val firebaseUser = authResult.user
-
-                if (firebaseUser == null) {
-                    _authState.value = AuthState.Error("Firebase authentication failed")
-                    return@launch
-                }
-
-                // 3. Get Firebase ID token
-                val idToken = firebaseUser.getIdToken(false).await().token
-
+                val idToken = account.idToken
                 if (idToken == null) {
-                    _authState.value = AuthState.Error("Failed to get Firebase token")
+                    _authState.value = AuthState.Error("Failed to get Google token")
                     return@launch
                 }
 
-                // 4. Send token to Laravel backend
                 val response = RetrofitClient.apiService.googleLogin(
-                    com.example.erlangga.data.api.GoogleLoginRequest(idToken)
+                    GoogleLoginRequest(idToken)
                 )
 
                 if (response.success && response.data != null) {
                     val loginData = response.data
-                    val sanctumToken = loginData.token
-
-                    // Save Sanctum token and user info
-                    RetrofitClient.setAuthToken(sanctumToken)
+                    RetrofitClient.setAuthToken(loginData.token)
                     TokenManager.saveUserInfo(loginData.user.name, loginData.user.email)
-
                     _authState.value = AuthState.Success(
                         userName = loginData.user.name,
                         userEmail = loginData.user.email
                     )
-
-                    Log.d("AuthViewModel", "Login successful: ${loginData.user.email}")
+                    Log.d("AuthViewModel", "Google login successful: ${loginData.user.email}")
                 } else {
                     val errorMsg = response.message ?: "Login failed"
                     _authState.value = AuthState.Error(errorMsg)
-                    Log.e("AuthViewModel", "Login failed: $errorMsg")
+                    Log.e("AuthViewModel", "Google login failed: $errorMsg")
                 }
 
             } catch (e: Exception) {
@@ -119,17 +96,14 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _authState.value = AuthState.Loading
-                
+
                 val request = com.example.erlangga.data.api.LoginRequest(email, password)
                 val response = RetrofitClient.apiService.login(request)
-                
+
                 if (response.success && response.data != null) {
                     val loginData = response.data
-                    val sanctumToken = loginData.token
-
-                    RetrofitClient.setAuthToken(sanctumToken)
+                    RetrofitClient.setAuthToken(loginData.token)
                     TokenManager.saveUserInfo(loginData.user.name, loginData.user.email)
-
                     _authState.value = AuthState.Success(
                         userName = loginData.user.name,
                         userEmail = loginData.user.email
@@ -138,17 +112,31 @@ class AuthViewModel : ViewModel() {
                 } else {
                     val errorMsg = response.message ?: "Login failed"
                     _authState.value = AuthState.Error(errorMsg)
-                    Log.e("AuthViewModel", "Login failed: $errorMsg")
                 }
+            } catch (e: HttpException) {
+                val errorMsg = parseHttpError(e) ?: when (e.code()) {
+                    401 -> "Email atau password salah"
+                    422 -> "Email tidak valid"
+                    429 -> "Terlalu banyak percobaan, coba lagi nanti"
+                    else -> "Server error (${e.code()})"
+                }
+                _authState.value = AuthState.Error(errorMsg)
+                Log.e("AuthViewModel", "Login HTTP error ${e.code()}", e)
             } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Network error or incorrect credentials")
+                _authState.value = AuthState.Error("Tidak bisa terhubung ke server")
                 Log.e("AuthViewModel", "Login Exception", e)
             }
         }
     }
 
+    private fun parseHttpError(e: HttpException): String? {
+        return try {
+            val body = e.response()?.errorBody()?.string() ?: return null
+            JSONObject(body).getString("message")
+        } catch (_: Exception) { null }
+    }
+
     fun signOut() {
-        firebaseAuth.signOut()
         googleSignInClient?.signOut()
         RetrofitClient.setAuthToken(null)
         TokenManager.clearAll()

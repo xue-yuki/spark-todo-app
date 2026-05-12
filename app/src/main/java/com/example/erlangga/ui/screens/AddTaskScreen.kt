@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -33,7 +36,7 @@ import java.time.format.DateTimeFormatter
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erlangga.viewmodels.TaskViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddTaskScreen(
     onTaskAdded: () -> Unit,
@@ -92,8 +95,10 @@ fun AddTaskScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 22.dp)
                 .padding(bottom = 22.dp)
+                .imePadding()
         ) {
             // Header
             Row(
@@ -185,9 +190,10 @@ fun AddTaskScreen(
                     modifier = Modifier.padding(bottom = 10.dp)
                 )
 
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     tags.forEach { tagOption ->
                         FilterChip(

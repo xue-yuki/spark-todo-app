@@ -17,6 +17,7 @@ object WidgetCacheManager {
     private const val PREFS_NAME = "spark_widget_prefs"
     private const val KEY_TASKS = "widget_tasks"
     private const val KEY_TASK_COUNT = "widget_task_count"
+    private const val KEY_COMPLETED_COUNT = "widget_completed_count"
     private val gson = Gson()
 
     fun saveTasks(context: Context, tasks: List<Task>) {
@@ -33,6 +34,7 @@ object WidgetCacheManager {
             .edit()
             .putString(KEY_TASKS, gson.toJson(activeTasks))
             .putInt(KEY_TASK_COUNT, tasks.filter { !it.done }.size)
+            .putInt(KEY_COMPLETED_COUNT, tasks.filter { it.done }.size)
             .apply()
     }
 
@@ -47,8 +49,11 @@ object WidgetCacheManager {
         }
     }
 
-    fun getTaskCount(context: Context): Int {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun getTaskCount(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getInt(KEY_TASK_COUNT, 0)
-    }
+
+    fun getCompletedCount(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_COMPLETED_COUNT, 0)
 }

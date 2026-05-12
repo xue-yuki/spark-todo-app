@@ -1,5 +1,6 @@
 package com.example.erlangga.ui.screens
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
@@ -7,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +33,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erlangga.data.models.Task
 import androidx.compose.ui.zIndex
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.abs
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erlangga.viewmodels.TaskViewModel
@@ -46,22 +52,29 @@ fun TasksScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showAddTaskModal by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
+    var showCalendar by remember { mutableStateOf(false) }
+    var isCalendarExpanded by remember { mutableStateOf(false) }
+    var selectedCalendarDate by remember { mutableStateOf<LocalDate?>(null) }
 
-    // Add LazyListState to manage scroll position
     val listState = rememberLazyListState()
 
-    val today = java.time.LocalDate.now()
-    val filteredTasks = remember(tasks, filter, searchQuery) {
-        when (filter) {
-            "today" -> tasks.filter { task ->
+    val today = LocalDate.now()
+    val filteredTasks = remember(tasks, filter, searchQuery, selectedCalendarDate) {
+        when {
+            selectedCalendarDate != null -> tasks.filter { task ->
+                task.dueDate?.substringBefore("T")?.let {
+                    runCatching { LocalDate.parse(it) }.getOrNull()
+                } == selectedCalendarDate
+            }
+            filter == "today" -> tasks.filter { task ->
                 val date = task.dueDate?.substringBefore("T")?.let {
-                    runCatching { java.time.LocalDate.parse(it) }.getOrNull()
+                    runCatching { LocalDate.parse(it) }.getOrNull()
                 }
                 date == today
             }
-            "week" -> tasks.filter { task ->
+            filter == "week" -> tasks.filter { task ->
                 val date = task.dueDate?.substringBefore("T")?.let {
-                    runCatching { java.time.LocalDate.parse(it) }.getOrNull()
+                    runCatching { LocalDate.parse(it) }.getOrNull()
                 }
                 date != null && !date.isBefore(today) && !date.isAfter(today.plusDays(6))
             }
@@ -97,13 +110,16 @@ fun TasksScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Saturday · ${tasks.size} tasks",
+                            text = if (selectedCalendarDate != null)
+                                selectedCalendarDate!!.format(DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.ENGLISH))
+                            else
+                                "${today.format(DateTimeFormatter.ofPattern("EEEE", Locale.ENGLISH))} · ${tasks.size} tasks",
                             fontSize = 12.sp,
                             letterSpacing = 0.1.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Today",
+                            text = if (selectedCalendarDate != null) "Selected" else "Tasks",
                             fontSize = 30.sp,
                             fontWeight = FontWeight.Medium,
                             letterSpacing = (-0.6).sp,
@@ -112,61 +128,105 @@ fun TasksScreen(
                         )
                     }
 
-                    IconButton(
-                        onClick = { /* TODO: More options */ },
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant,
-                                CircleShape
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (selectedCalendarDate != null) {
+                            IconButton(
+                                onClick = { selectedCalendarDate = null },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Clear date",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { showCalendar = !showCalendar },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .background(
+                                    if (showCalendar) MaterialTheme.colorScheme.onBackground
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                    CircleShape
+                                )
+                        ) {
+                            Icon(
+                                Icons.Default.CalendarToday,
+                                contentDescription = "Calendar",
+                                modifier = Modifier.size(18.dp),
+                                tint = if (showCalendar) MaterialTheme.colorScheme.background
+                                       else MaterialTheme.colorScheme.onSurface
                             )
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "More",
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
+                        }
+                    }
+                }
+
+                // Calendar strip
+                AnimatedVisibility(
+                    visible = showCalendar,
+                    enter = expandVertically(spring(stiffness = Spring.StiffnessMedium)) + fadeIn(),
+                    exit = shrinkVertically(spring(stiffness = Spring.StiffnessMedium)) + fadeOut()
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        CalendarStrip(
+                            tasks = tasks,
+                            selectedDate = selectedCalendarDate,
+                            isExpanded = isCalendarExpanded,
+                            onExpandedChange = { isCalendarExpanded = it },
+                            onDateSelected = { date ->
+                                selectedCalendarDate = if (selectedCalendarDate == date) null else date
+                            }
                         )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Filter chips
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(bottom = 10.dp)
-                ) {
-                    listOf("today", "week", "all").forEach { filterOption ->
-                        FilterChip(
-                            selected = filter == filterOption,
-                            onClick = { filter = filterOption },
-                            label = {
-                                Text(
-                                    text = filterOption.replaceFirstChar { it.uppercase() },
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    letterSpacing = 0.1.sp
-                                )
-                            },
-                            enabled = true,
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.onBackground,
-                                selectedLabelColor = MaterialTheme.colorScheme.background,
-                                containerColor = Color.Transparent,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            border = if (filter == filterOption) null else FilterChipDefaults.filterChipBorder(
-                                enabled = true,
+                // Filter chips — hidden when calendar expanded or date selected
+                AnimatedVisibility(visible = !isCalendarExpanded && selectedCalendarDate == null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    ) {
+                        listOf("today", "week", "all").forEach { filterOption ->
+                            FilterChip(
                                 selected = filter == filterOption,
-                                borderColor = MaterialTheme.colorScheme.outline
-                            ),
-                            shape = RoundedCornerShape(99.dp)
-                        )
+                                onClick = { filter = filterOption },
+                                label = {
+                                    Text(
+                                        text = filterOption.replaceFirstChar { it.uppercase() },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        letterSpacing = 0.1.sp
+                                    )
+                                },
+                                enabled = true,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.onBackground,
+                                    selectedLabelColor = MaterialTheme.colorScheme.background,
+                                    containerColor = Color.Transparent,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                border = if (filter == filterOption) null else FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = filter == filterOption,
+                                    borderColor = MaterialTheme.colorScheme.outline
+                                ),
+                                shape = RoundedCornerShape(99.dp)
+                            )
+                        }
                     }
                 }
 
-                // Search bar
+                // Search bar — hidden when calendar expanded
+                AnimatedVisibility(visible = !isCalendarExpanded) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -213,6 +273,7 @@ fun TasksScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 )
+                } // end AnimatedVisibility search bar
             }
 
             // Scrollable list
@@ -313,6 +374,250 @@ fun TasksScreen(
                 onNavigateBack = { taskToEdit = null },
                 taskViewModel = taskViewModel
             )
+        }
+    }
+}
+
+@Composable
+fun CalendarStrip(
+    tasks: List<Task>,
+    selectedDate: LocalDate?,
+    isExpanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onDateSelected: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val today = LocalDate.now()
+    var displayMonth by remember { mutableStateOf(YearMonth.from(selectedDate ?: today)) }
+
+    val taskCountByDate = remember(tasks) {
+        tasks.groupBy { task ->
+            task.dueDate?.substringBefore("T")?.let {
+                runCatching { LocalDate.parse(it) }.getOrNull()
+            }
+        }.filterKeys { it != null }
+            .mapKeys { it.key!! }
+            .mapValues { it.value.size }
+    }
+
+    Column(modifier = modifier) {
+        // Strip header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = displayMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AnimatedVisibility(visible = isExpanded) {
+                    Row {
+                        IconButton(
+                            onClick = { displayMonth = displayMonth.minusMonths(1) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(Icons.Default.ChevronLeft, null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(
+                            onClick = { displayMonth = displayMonth.plusMonths(1) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(Icons.Default.ChevronRight, null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = { onExpandedChange(!isExpanded) },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Day-of-week labels (Sun–Sat)
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf("S", "M", "T", "W", "T", "F", "S").forEach { label ->
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Week strip
+        AnimatedVisibility(
+            visible = !isExpanded,
+            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+        ) {
+            val anchor = selectedDate ?: today
+            val dayOfWeek = anchor.dayOfWeek.value % 7  // Sun=0, Mon=1,…,Sat=6
+            val weekStart = anchor.minusDays(dayOfWeek.toLong())
+            Row(modifier = Modifier.fillMaxWidth()) {
+                (0..6).forEach { i ->
+                    val date = weekStart.plusDays(i.toLong())
+                    CalendarDayCell(
+                        date = date,
+                        isSelected = date == selectedDate,
+                        isToday = date == today,
+                        taskCount = taskCountByDate[date] ?: 0,
+                        onClick = { onDateSelected(date) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // Full month grid
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+        ) {
+            Spacer(modifier = Modifier.height(2.dp))
+            MonthCalendarGrid(
+                yearMonth = displayMonth,
+                selectedDate = selectedDate,
+                today = today,
+                taskCountByDate = taskCountByDate,
+                onDateSelected = { date ->
+                    onDateSelected(date)
+                    displayMonth = YearMonth.from(date)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun CalendarDayCell(
+    date: LocalDate,
+    isSelected: Boolean,
+    isToday: Boolean,
+    taskCount: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val heatAlpha = when (taskCount) {
+        0 -> 0f; 1 -> 0.18f; 2 -> 0.38f; 3 -> 0.58f; else -> 0.78f
+    }
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Column(
+        modifier = modifier
+            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                when {
+                    isSelected -> MaterialTheme.colorScheme.onBackground
+                    taskCount > 0 -> primaryColor.copy(alpha = heatAlpha)
+                    else -> Color.Transparent
+                }
+            )
+            .then(
+                if (isToday && !isSelected) Modifier.border(
+                    1.dp,
+                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+                    RoundedCornerShape(10.dp)
+                ) else Modifier
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text(
+            text = date.dayOfMonth.toString(),
+            fontSize = 13.sp,
+            fontWeight = if (isSelected || isToday) FontWeight.SemiBold else FontWeight.Normal,
+            color = when {
+                isSelected -> MaterialTheme.colorScheme.background
+                isToday -> MaterialTheme.colorScheme.onBackground
+                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+            }
+        )
+        Box(modifier = Modifier.height(5.dp), contentAlignment = Alignment.Center) {
+            if (taskCount > 0 && !isSelected) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    repeat(minOf(taskCount, 3)) {
+                        Box(
+                            modifier = Modifier
+                                .size(4.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (taskCount > 2) MaterialTheme.colorScheme.onBackground
+                                    else primaryColor
+                                )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthCalendarGrid(
+    yearMonth: YearMonth,
+    selectedDate: LocalDate?,
+    today: LocalDate,
+    taskCountByDate: Map<LocalDate, Int>,
+    onDateSelected: (LocalDate) -> Unit
+) {
+    val firstDay = yearMonth.atDay(1)
+    val startOffset = firstDay.dayOfWeek.value % 7  // Sun=0
+    val daysInMonth = yearMonth.lengthOfMonth()
+    val rows = (startOffset + daysInMonth + 6) / 7
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        repeat(rows) { row ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                repeat(7) { col ->
+                    val dayNum = row * 7 + col - startOffset + 1
+                    if (dayNum < 1 || dayNum > daysInMonth) {
+                        Box(modifier = Modifier.weight(1f))
+                    } else {
+                        val date = yearMonth.atDay(dayNum)
+                        CalendarDayCell(
+                            date = date,
+                            isSelected = date == selectedDate,
+                            isToday = date == today,
+                            taskCount = taskCountByDate[date] ?: 0,
+                            onClick = { onDateSelected(date) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
